@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Event Photos</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background: #1a1a1a; color: white; text-align: center; }
+        .hidden { display: none; }
+        /* Estilo Proyector */
+        #gallery { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px; justify-content: center; }
+        #gallery img { width: 300px; height: 200px; object-fit: cover; border-radius: 8px; border: 2px solid #444; }
+        /* Estilo Estudiante */
+        .upload-card { padding: 50px 20px; }
+        input[type="file"] { display: none; }
+        .btn { background: #007bff; padding: 15px 30px; border-radius: 50px; cursor: pointer; display: inline-block; }
+        #status { margin-top: 20px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <div id="student-view" class="upload-card">
+        <h2>Subir Foto al Proyector</h2>
+        <label class="btn">
+            📷 Seleccionar Foto
+            <input type="file" id="fileItem" accept="image/*">
+        </label>
+        <p id="status">Selecciona una imagen para comenzar</p>
+    </div>
+
+    <div id="projector-view" class="hidden">
+        <h1>Muro en Tiempo Real</h1>
+        <div id="gallery"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+        import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // CONFIGURACIÓN (Pega tus datos de Firebase aquí)
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "TU_PROYECTO.firebaseapp.com",
+            projectId: "TU_PROYECTO",
+            storageBucket: "TU_PROYECTO.appspot.com",
+            messagingSenderId: "ID",
+            appId: "ID_APP"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const storage = getStorage(app);
+        const db = getFirestore(app);
+
+        // Lógica de navegación simple
+        const urlParams = new URLSearchParams(window.location.search);
+        const isProjector = urlParams.has('view');
+
+        if (isProjector) {
+            document.getElementById('student-view').classList.add('hidden');
+            document.getElementById('projector-view').classList.remove('hidden');
+            loadGallery();
+        }
+
+        // --- LÓGICA ESTUDIANTE (SUBIDA) ---
+        const fileInput = document.getElementById('fileItem');
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('status').innerText = "Subiendo...";
+            
+            try {
+                // 1. Subir a Storage
+                const storageRef = ref(storage, 'photos/' + Date.now() + "_" + file.name);
+                await uploadBytes(storageRef, file);
+                const url = await getDownloadURL(storageRef);
+
+                // 2. Guardar referencia en Firestore
+                await addDoc(collection(db, "photos"), {
+                    url: url,
+                    timestamp: Date.now(),
+                    approved: true // Puedes cambiar esto a 'false' si quieres revisarlas antes
+                });
+
+                document.getElementById('status').innerText = "¡Enviado con éxito!";
+            } catch (error) {
+                console.error(error);
+                document.getElementById('status').innerText = "Error al subir.";
+            }
+        });
+
+        // --- LÓGICA PROYECTOR (ESCUCHA EN TIEMPO REAL) ---
+        function loadGallery() {
+            const q = query(collection(db, "photos"), orderBy("timestamp", "desc"));
+            onSnapshot(q, (snapshot) => {
+                const gallery = document.getElementById('gallery');
+                gallery.innerHTML = '';
+                snapshot.forEach((doc) => {
+                    const img = document.createElement('img');
+                    img.src = doc.data().url;
+                    gallery.appendChild(img);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
